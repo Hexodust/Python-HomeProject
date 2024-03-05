@@ -1,54 +1,74 @@
 import docker
-from time import sleep
 
-client = docker.from_env()
 
-def remove_containers():
-    containers = client.containers.list(all=True)
+def cleanup(client, containers, network_name):
     for container in containers:
         print(f"Removing container: {container.name}")
         container.remove(force=True)
 
-def create_docker_container(image, name):
+    print(f"Removing network {network_name}.")
+    client.networks.get(network_name).remove()
+
+
+def create_docker_container(client, image, name):
     try:
         container = client.containers.run(
             image,
             detach=True,
             name=name,
             hostname=name,
-            remove=True,
             tty=True
         )
-        wait_for_container(container.id)
-        container = client.containers.get(container.id)
         if container and container.status == 'running':
-            print(f"Container {name} was created successfully")
+            print(f"Container {name} was created and runs successfully")
         else:
-            print(f"There was an error creating container {name}")
+            print(f"There was an error creating the container {name} or the container is not running.")
         return container
     except docker.errors.APIError as e:
         print(f"Error creating container {name}: {e}")
         return None
 
-def wait_for_container(container_id):
-    timeout = 10
-    stop_time= 1
-    elapsed_time = 0
-    while client.containers.get(container_id).status != "running" and elapsed_time < timeout:
-        sleep(stop_time)
-        elapsed_time += stop_time
-        continue
 
-
-
-def create_docker_containers(num_targets):
-    create_docker_container('alpine', 'attacker')
+def create_docker_containers(client, num_targets):
+    target_list = []
+    attacker = create_docker_container(client, 'alpine', 'attacker')
     for i in range(num_targets):
-        create_docker_container('alpine', f'target-{i}')
+        target_list.append(create_docker_container(client, 'alpine', f'target-{i}'))
+
+    return attacker, target_list
+
+
+def create_network(client, network_name):
+    network = client.networks.create(network_name)
+    for container in client.containers.list():
+        network.connect(container)
+
+
+def extract_packet_loss(command_output):
+    result = command_output.split("\n")
+    return result[-3]
+
+def ping_containers(attacker, target_list):
+    for target in target_list:
+        exit_code, command_output = attacker.exec_run(f"ping -c 4 {target.name}")
+        command_output_str = str(command_output, encoding="utf-8")
+        packet_loss_output = extract_packet_loss(command_output_str)
+        print(f"Ping from attacker to {target.name} returned exit code {exit_code} with {packet_loss_output}")
+
+
+
+def main():
+
+    client = docker.from_env()
+    network_name = "hack-net"
+    num_targets = int(input("Input the number of target containers to be created: "))
+    attacker, target_list = create_docker_containers(client, num_targets)
+
+    create_network(client, network_name)
+    ping_containers(attacker, target_list)
+
+    cleanup(client, [attacker, *target_list], network_name)
 
 
 if __name__ == "__main__":
-    remove_containers()
-    num_targets = int(input("Input the number of target containers to be created: "))
-    create_docker_containers(num_targets)
-    print(client.containers.list())
+    main()
