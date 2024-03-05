@@ -48,6 +48,10 @@ Available commands:
 - setup-network: Set up a Docker network and connect containers to it.
 - test-network: Test network connectivity between containers.
 - cleanup: Remove Docker containers and optionally the associated network.
+  For commands with parameters that have multiple inputs (such as containers marked for removal using cleanup command), you can provide multiple values by repeating the option:
+  ```bash
+  python cli.py cleanup -c container1 -c container2 -c container3
+  ```
 - Use --help option with any command to see available options and usage details.
 
 ## Documentation
