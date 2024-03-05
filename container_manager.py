@@ -1,3 +1,4 @@
+
 from typing import List
 
 import docker
@@ -52,7 +53,7 @@ def create_docker_container(client: DockerClient, image: str, name: str) -> Cont
             hostname=name,
             tty=True
         )
-        if container and container.status == 'running':
+        if container and container.status == 'running' or container.status == 'created':
             print(f"Container {name} was created and runs successfully")
         else:
             print(f"There was an error creating the container {name} or the container is not running.")
@@ -125,11 +126,13 @@ def extract_packet_loss(ping_output: str) -> str:
     return result[-3]
 
 
-def ping_containers(attacker, target_list):
+def ping_containers(no_of_pings, attacker, target_list):
     """Send a ping from the attacker to each container in the list
 
     Parameters
     ----------
+    no_of_pings : int
+        How many times should attacker container ping each target container
     attacker : Container
         Ping sender
     target_list : List[Container]
@@ -137,24 +140,7 @@ def ping_containers(attacker, target_list):
     """
 
     for target in target_list:
-        exit_code, ping_output = attacker.exec_run(f"ping -c 4 {target.name}")
+        exit_code, ping_output = attacker.exec_run(f"ping -c {no_of_pings} {target.name}")
         ping_output_str = str(ping_output, encoding="utf-8")
         packet_loss_output = extract_packet_loss(ping_output_str)
         print(f"Ping from attacker to {target.name} returned exit code {exit_code} with {packet_loss_output}")
-
-
-def main():
-
-    client = docker.from_env()
-    network_name = "hack-net"
-    num_targets = int(input("Input the number of target containers to be created: "))
-    attacker, target_list = create_docker_containers(client, num_targets)
-
-    create_network(client, [attacker, *target_list], network_name)
-    ping_containers(attacker, target_list)
-
-    cleanup(client, [attacker, *target_list], network_name)
-
-
-if __name__ == "__main__":
-    main()
