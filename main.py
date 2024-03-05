@@ -1,40 +1,54 @@
 import docker
+from time import sleep
+
 client = docker.from_env()
-def create_docker_attacker():
-    attacker_container = client.containers.run(
-        'alpine',
-        detach=True,
-        name='attacker',
-        hostname='attacker',
-    )
-    if attacker_container.status == 'running':
-        print("Attacker container has been created successfully.")
-    else:
-        print("There was an error with Attacker Container")
-        print(attacker_container.status)
+
+def remove_containers():
+    containers = client.containers.list(all=True)
+    for container in containers:
+        print(f"Removing container: {container.name}")
+        container.remove(force=True)
+
+def create_docker_container(image, name):
+    try:
+        container = client.containers.run(
+            image,
+            detach=True,
+            name=name,
+            hostname=name,
+            remove=True,
+            tty=True
+        )
+        wait_for_container(container.id)
+        container = client.containers.get(container.id)
+        if container and container.status == 'running':
+            print(f"Container {name} was created successfully")
+        else:
+            print(f"There was an error creating container {name}")
+        return container
+    except docker.errors.APIError as e:
+        print(f"Error creating container {name}: {e}")
+        return None
+
+def wait_for_container(container_id):
+    timeout = 10
+    stop_time= 1
+    elapsed_time = 0
+    while client.containers.get(container_id).status != "running" and elapsed_time < timeout:
+        sleep(stop_time)
+        elapsed_time += stop_time
+        continue
+
 
 
 def create_docker_containers(num_targets):
-    create_docker_attacker()
-    target_containers_list = []
-    # Creating the target containers
+    create_docker_container('alpine', 'attacker')
     for i in range(num_targets):
-        target_container = client.containers.run(
-            'alpine',
-            detach=True,
-            name=f'target-{i}',
-            hostname=f'target-{i}'
-        )
-        target_containers_list.append(target_container)
-
-    for i, container in enumerate(target_containers_list):
-        if container.status == 'running':
-            print(f"Container target-{i} was created successfully")
-        else:
-            print(f"There was an error creating container target-{i}")
-
+        create_docker_container('alpine', f'target-{i}')
 
 
 if __name__ == "__main__":
+    remove_containers()
     num_targets = int(input("Input the number of target containers to be created: "))
     create_docker_containers(num_targets)
+    print(client.containers.list())
